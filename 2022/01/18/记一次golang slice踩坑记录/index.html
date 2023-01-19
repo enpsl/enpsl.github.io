@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha256-Z1K5uhUaJXA7Ll0XrZ/0JhX4lAtZFpT6jkKrEDT0drU=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"enpsl.github.io","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.14.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="概述前置知识点123456func main()  &amp;#123;    var a &#x3D; []int&amp;#123;1,2&amp;#125;    b :&#x3D; a    b[1] &#x3D; 3    fmt.Println(a)&amp;#125; 1[1 3] 先上一段简单代码,修改b[1]的值发现a[1]的值也跟着变化，原因是a和b里成员的地址是指向同一处的 1234567var a &#x3D; []int&amp;#123;1,2&amp;#">
+<meta property="og:type" content="article">
+<meta property="og:title" content="golang slice 问题排查">
+<meta property="og:url" content="https://enpsl.github.io/2022/01/18/%E8%AE%B0%E4%B8%80%E6%AC%A1golang%20slice%E8%B8%A9%E5%9D%91%E8%AE%B0%E5%BD%95/index.html">
+<meta property="og:site_name" content="彭诗亮的博客">
+<meta property="og:description" content="概述前置知识点123456func main()  &amp;#123;    var a &#x3D; []int&amp;#123;1,2&amp;#125;    b :&#x3D; a    b[1] &#x3D; 3    fmt.Println(a)&amp;#125; 1[1 3] 先上一段简单代码,修改b[1]的值发现a[1]的值也跟着变化，原因是a和b里成员的地址是指向同一处的 1234567var a &#x3D; []int&amp;#123;1,2&amp;#">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_1.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_11.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_12.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_13.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_14.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_15.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_16.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_17.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_18.png">
+<meta property="article:published_time" content="2022-01-18T11:30:00.000Z">
+<meta property="article:modified_time" content="2023-01-19T07:31:17.888Z">
+<meta property="article:author" content="enpsl">
+<meta property="article:tag" content="golang">
+<meta property="article:tag" content="数据结构与算法">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://enpsl.github.io/img/in-post/2022-01-15/img_1.png">
+
+
+<link rel="canonical" href="https://enpsl.github.io/2022/01/18/%E8%AE%B0%E4%B8%80%E6%AC%A1golang%20slice%E8%B8%A9%E5%9D%91%E8%AE%B0%E5%BD%95/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://enpsl.github.io/2022/01/18/%E8%AE%B0%E4%B8%80%E6%AC%A1golang%20slice%E8%B8%A9%E5%9D%91%E8%AE%B0%E5%BD%95/","path":"2022/01/18/记一次golang slice踩坑记录/","title":"golang slice 问题排查"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>golang slice 问题排查 | 彭诗亮的博客</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">彭诗亮的博客</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A6%82%E8%BF%B0"><span class="nav-number">1.</span> <span class="nav-text">概述</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%89%8D%E7%BD%AE%E7%9F%A5%E8%AF%86%E7%82%B9"><span class="nav-number">1.1.</span> <span class="nav-text">前置知识点</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%B8%A9%E5%9D%91%E8%83%8C%E6%99%AF"><span class="nav-number">1.2.</span> <span class="nav-text">踩坑背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%B8%A9%E5%9D%91%E5%8E%9F%E5%9B%A0%E5%88%86%E6%9E%90"><span class="nav-number">1.3.</span> <span class="nav-text">踩坑原因分析</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%AD%E7%82%B9%E8%BF%BD%E8%B8%AA"><span class="nav-number">1.4.</span> <span class="nav-text">断点追踪</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%BD%E8%B8%AAstep1"><span class="nav-number">1.4.1.</span> <span class="nav-text">追踪step1</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%BD%E8%B8%AAstep2"><span class="nav-number">1.4.2.</span> <span class="nav-text">追踪step2</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%BD%E8%B8%AAstep3"><span class="nav-number">1.4.3.</span> <span class="nav-text">追踪step3</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%BD%E8%B8%AAstep4"><span class="nav-number">1.4.4.</span> <span class="nav-text">追踪step4</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%BD%E8%B8%AAstep5"><span class="nav-number">1.4.5.</span> <span class="nav-text">追踪step5</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%BD%E8%B8%AAstep6"><span class="nav-number">1.4.6.</span> <span class="nav-text">追踪step6</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%BD%E8%B8%AAstep7"><span class="nav-number">1.4.7.</span> <span class="nav-text">追踪step7</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%88%9D%E6%AD%A5%E7%BB%93%E8%AE%BA"><span class="nav-number">1.4.8.</span> <span class="nav-text">初步结论</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%BF%BD%E8%B8%AA%E7%BB%93%E8%AE%BA%E5%8D%B0%E8%AF%81"><span class="nav-number">1.5.</span> <span class="nav-text">追踪结论印证</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#How-To-Fix"><span class="nav-number">1.6.</span> <span class="nav-text">How To Fix</span></a></li></ol></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">enpsl</p>
+  <div class="site-description" itemprop="description">my blog</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">31</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+          <a href="/tags/">
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://enpsl.github.io/2022/01/18/%E8%AE%B0%E4%B8%80%E6%AC%A1golang%20slice%E8%B8%A9%E5%9D%91%E8%AE%B0%E5%BD%95/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="enpsl">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="彭诗亮的博客">
+      <meta itemprop="description" content="my blog">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="golang slice 问题排查 | 彭诗亮的博客">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          golang slice 问题排查
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2022-01-18 19:30:00" itemprop="dateCreated datePublished" datetime="2022-01-18T19:30:00+08:00">2022-01-18</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-01-19 15:31:17" itemprop="dateModified" datetime="2023-01-19T15:31:17+08:00">2023-01-19</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+        <h2 id="概述"><a href="#概述" class="headerlink" title="概述"></a>概述</h2><h3 id="前置知识点"><a href="#前置知识点" class="headerlink" title="前置知识点"></a>前置知识点</h3><figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span>  &#123;</span><br><span class="line">    <span class="keyword">var</span> a = []<span class="type">int</span>&#123;<span class="number">1</span>,<span class="number">2</span>&#125;</span><br><span class="line">    b := a</span><br><span class="line">    b[<span class="number">1</span>] = <span class="number">3</span></span><br><span class="line">    fmt.Println(a)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[1 3]</span><br></pre></td></tr></table></figure>
+<p>先上一段简单代码,修改b[1]的值发现a[1]的值也跟着变化，原因是a和b里成员的地址是指向同一处的</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">var</span> a = []<span class="type">int</span>&#123;<span class="number">1</span>,<span class="number">2</span>&#125;</span><br><span class="line">b := a</span><br><span class="line">b[<span class="number">1</span>] = <span class="number">3</span></span><br><span class="line">fmt.Printf(<span class="string">&quot;a[0]地址:%p\n&quot;</span>, &amp;a[<span class="number">0</span>])</span><br><span class="line">fmt.Printf(<span class="string">&quot;a[1]地址:%p\n&quot;</span>, &amp;a[<span class="number">1</span>])</span><br><span class="line">fmt.Printf(<span class="string">&quot;b[0]地址:%p\n&quot;</span>, &amp;b[<span class="number">0</span>])</span><br><span class="line">fmt.Printf(<span class="string">&quot;b[1]地址:%p\n&quot;</span>, &amp;b[<span class="number">1</span>])</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">a[0]地址:0xc0000b2010</span><br><span class="line">a[1]地址:0xc0000b2018</span><br><span class="line">b[0]地址:0xc0000b2010</span><br><span class="line">b[1]地址:0xc0000b2018</span><br></pre></td></tr></table></figure>
+
+<h3 id="踩坑背景"><a href="#踩坑背景" class="headerlink" title="踩坑背景"></a>踩坑背景</h3><p>踩坑经历是发生在刷力扣题<a target="_blank" rel="noopener" href="https://leetcode.cn/problems/combination-sum/description/">组合总和</a>这道题的时候，提交后发现一个case没通过<br><img src="/img/in-post/2022-01-15/img_1.png" alt="img_1.png"><br>思考🤔了几遍，没发现出代码逻辑上有什么问题，百思不得其解情况下在本地运行了下该case，发现出现了同样的情况😖<br>下面是当时刷题提交的代码:(为了方便问题分析，由于力扣原题输出项比较多，因此对该case简化了一下)</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	res1 := CombinationSum1([]<span class="type">int</span>&#123;<span class="number">7</span>,<span class="number">3</span>,<span class="number">2</span>&#125;, <span class="number">12</span>)</span><br><span class="line">	fmt.Println(res1)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">CombinationSum1</span><span class="params">(candidates []<span class="type">int</span>, target <span class="type">int</span>)</span></span> [][]<span class="type">int</span> &#123;</span><br><span class="line">    <span class="keyword">var</span> res = <span class="built_in">make</span>([][]<span class="type">int</span>, <span class="number">0</span>)</span><br><span class="line">    <span class="keyword">var</span> backtrack <span class="function"><span class="keyword">func</span><span class="params">([]<span class="type">int</span>, <span class="type">int</span>, <span class="type">int</span>, []<span class="type">int</span>, <span class="type">int</span>)</span></span></span><br><span class="line">    backtrack = <span class="function"><span class="keyword">func</span><span class="params">(candidate[]<span class="type">int</span>, begin, size <span class="type">int</span>, ints []<span class="type">int</span>, val <span class="type">int</span>)</span></span> &#123;</span><br><span class="line">        <span class="keyword">if</span> val &lt; <span class="number">0</span> &#123;</span><br><span class="line">            <span class="keyword">return</span></span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> val == <span class="number">0</span> &#123;</span><br><span class="line">            res = <span class="built_in">append</span>(res, ints)</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">for</span> i := begin; i &lt; size; i++ &#123;</span><br><span class="line">            backtrack(candidate, i, size, <span class="built_in">append</span>(ints, candidate[i]), val - candidate[i])</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    backtrack(candidates, <span class="number">0</span>, <span class="built_in">len</span>(candidates), []<span class="type">int</span>&#123;&#125;, target)</span><br><span class="line">    <span class="keyword">return</span> res</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>查看输出:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[[7 3 2] [3 3 3 2] [3 3 2 2 2] [2 2 2 2 2 2]]</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>很明显[3 3 3 2]加起来不是12，和leetcode出现的问题是一样的</p>
+</blockquote>
+<h3 id="踩坑原因分析"><a href="#踩坑原因分析" class="headerlink" title="踩坑原因分析"></a>踩坑原因分析</h3><p>一开始，先是在append处打印下<code>ints</code>变量内容，看看是不是路径和计算有问题</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> val == <span class="number">0</span> &#123;</span><br><span class="line">    fmt.Printf(<span class="string">&quot;append ints %v\n&quot;</span>, ints)</span><br><span class="line">    res = <span class="built_in">append</span>(res, ints)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">append ints [7 3 2]</span><br><span class="line">append ints [3 3 3 3]</span><br><span class="line">append ints [3 3 2 2 2]</span><br><span class="line">append ints [2 2 2 2 2 2]</span><br><span class="line">[[7 3 2] [3 3 3 2] [3 3 2 2 2] [2 2 2 2 2 2]]</span><br></pre></td></tr></table></figure>
+<p>此时，发现了事情的不妙，append<code>ints</code>时<code>ints</code>的成员是正确的，但是最终输出<code>ints</code>的成员确由<code>[3 3 3 3]</code>变为了<code>[3 3 3 2]</code>,<br>于是猜测一定函数<code>backtrack(...append(ints, candidate[i])...)</code>这个函数调用时<code>ints[3]</code>成员的地址的值在后面被修改了，因为通过先前的举例我们也知道了<code>slice</code>里的成员是引用的吗🔍<br>所以决定断点打印一下来印证自己的猜想，由于断点过程中需要每次查看栈空间函数各个参数的值已经函数递归调用是<code>ints</code>成员的地址值的变化，所以采用<code>gdb</code>工具进行断点</p>
+<h3 id="断点追踪"><a href="#断点追踪" class="headerlink" title="断点追踪"></a>断点追踪</h3><p>通过上面的输出结果我们知道<code>ints</code>是在第二次append后输出的，所以直接从第二次append后开始分析,并且<code>ints[3]</code>发生了非预期结果，所以只分析<code>ints[3]</code>的地址和值即可</p>
+<h4 id="追踪step1"><a href="#追踪step1" class="headerlink" title="追踪step1"></a>追踪step1</h4><p>首先，因为发现问题分歧的原因是在<code>res = append(res, ints)</code>这行产生的，因此在这里break一下(如下图所示)<br><img src="/img/in-post/2022-01-15/img_11.png" alt="img_11.png"></p>
+<h4 id="追踪step2"><a href="#追踪step2" class="headerlink" title="追踪step2"></a>追踪step2</h4><p>看一下当前<code>栈</code>空间变量成员(如下图所示)<br><img src="/img/in-post/2022-01-15/img_12.png" alt="img_12.png"></p>
+<blockquote>
+<p>这时，<code>ints[3]</code>还是正常的，打印结果是<code>3</code>,我们记录下当前<code>ints[3]</code>的地址<code>0xc0000ae078</code>,ints变量的地址<code>0xc0000ae060</code>也记录下，后面会用到</p>
+</blockquote>
+<h4 id="追踪step3"><a href="#追踪step3" class="headerlink" title="追踪step3"></a>追踪step3</h4><p>当<code>beign=1;i=1</code>时(如下图所示)；<code>candidate[i]</code>会被append到ints中，看下<code>candidate[i] = 3</code>，这时即使<code>ints[3]</code>地址被重新赋值为<code>candidate[i]</code>，也还是会为3，看不出来什么变化，继续走<br><img src="/img/in-post/2022-01-15/img_13.png" alt="img_13.png"></p>
+<h4 id="追踪step4"><a href="#追踪step4" class="headerlink" title="追踪step4"></a>追踪step4</h4><p>我们直接跳到i&#x3D;2;begin&#x3D;1(如下图所示)；此时发现下面的i&#x3D;1，证明函数还没开始调用，继续<br><img src="/img/in-post/2022-01-15/img_14.png" alt="img_14.png"></p>
+<blockquote>
+<p>为什么在i&#x3D;2后面i又变为了1，并且还有backtrack函数调用？<br>解释：因为在回溯递归场景中，当前循环里，函数可能还存在其他循环时递归调用的函数，而在其他循环里递归调用的函数成员内存地址是跟当前循环不一样的，所以这里不做追踪</p>
+</blockquote>
+<h4 id="追踪step5"><a href="#追踪step5" class="headerlink" title="追踪step5"></a>追踪step5</h4><p>打印<code>candidate[2]</code>，发现值为2(如下图所示),因为这时函数还未调用，<code>candidate[2]</code>还未append，函数将会在下一行调用，所以<code>ints[3]</code>还是3继续追踪<br><img src="/img/in-post/2022-01-15/img_15.png" alt="img_15.png"></p>
+<h4 id="追踪step6"><a href="#追踪step6" class="headerlink" title="追踪step6"></a>追踪step6</h4><p>当backtrack函数执行后;<code>candidate[2]</code>被append到了<code>ints</code>中，此时<code>ints[3]</code>的地址的值发生了修改(如下图所示),所以<code>res</code>最后返回结果的切片也发生了修改<br><img src="/img/in-post/2022-01-15/img_16.png" alt="img_16.png"><br>此时<code>ints[]3</code>的地址<code>0xc0000ae078</code>还是之前的地址，证实了我们的猜想</p>
+<h4 id="追踪step7"><a href="#追踪step7" class="headerlink" title="追踪step7"></a>追踪step7</h4><p>接着往下走，因为i&#x3D;2后，在++为3后不满足<code>i&lt;size</code>判断，所以退出当前循环，进入到下一次循环的函数栈<br><img src="/img/in-post/2022-01-15/img_17.png" alt="img_17.png"><br>此时ints[3]地址由<code>0xc0000ae078</code>变为了<code>0xc0000ac058</code>，ints地址由<code>0xc0000ae060</code>变为了<code>0xc0000ac040</code></p>
+<blockquote>
+<p>之前的ints地址和ints地址在追踪step2记录过</p>
+</blockquote>
+<h4 id="初步结论"><a href="#初步结论" class="headerlink" title="初步结论"></a>初步结论</h4><p>在当前函数栈内，ints成员的地址在每次循环调用时是不变的,所以在当前循环函数调用时,ints发生append后，由于是浅拷贝，所以会发生返回切片结果成员数据<code>被污染</code>的情况</p>
+<h3 id="追踪结论印证"><a href="#追踪结论印证" class="headerlink" title="追踪结论印证"></a>追踪结论印证</h3><p>从前面的结论可知，由于<code>candidate[2]</code>是在循环最后被append的，所以对<code>ints[3]</code>地址指向的值发生了修改，我们可以通过在输入项中增加一个元素，来印证当前结论</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">res1 := CombinationSum1([]<span class="type">int</span>&#123;<span class="number">7</span>,<span class="number">3</span>,<span class="number">2</span>, <span class="number">8</span>&#125;, <span class="number">12</span>)</span><br></pre></td></tr></table></figure>
+<p>打印输出结果</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">append ints [7 3 2]</span><br><span class="line">append ints [3 3 3 3]</span><br><span class="line">append ints [3 3 2 2 2]</span><br><span class="line">append ints [2 2 2 2 2 2]</span><br><span class="line">append ints [2 2 8]</span><br><span class="line">[[7 3 2] [3 3 3 8] [3 3 2 2 2] [2 2 2 2 2 8] [2 2 8]]</span><br></pre></td></tr></table></figure>
+<p>可以看到<code>[3 3 3 2]</code>变为了<code>[3 3 3 8]</code></p>
+<h3 id="How-To-Fix"><a href="#How-To-Fix" class="headerlink" title="How To Fix"></a>How To Fix</h3><p>了解问题根本原因后想解决就很简单了，我们只要在append时深拷贝一次ints就可以了<br>解决后完整代码:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	res1 := CombinationSum2([]<span class="type">int</span>&#123;<span class="number">7</span>,<span class="number">3</span>,<span class="number">2</span>, <span class="number">8</span>&#125;, <span class="number">12</span>)</span><br><span class="line">	fmt.Println(res1)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">CombinationSum1</span><span class="params">(candidates []<span class="type">int</span>, target <span class="type">int</span>)</span></span> [][]<span class="type">int</span> &#123;</span><br><span class="line">	<span class="keyword">var</span> res = <span class="built_in">make</span>([][]<span class="type">int</span>, <span class="number">0</span>)</span><br><span class="line">	<span class="keyword">var</span> backtrack <span class="function"><span class="keyword">func</span><span class="params">([]<span class="type">int</span>, <span class="type">int</span>, <span class="type">int</span>, []<span class="type">int</span>, <span class="type">int</span>)</span></span></span><br><span class="line">	backtrack = <span class="function"><span class="keyword">func</span><span class="params">(candidate[]<span class="type">int</span>, begin, size <span class="type">int</span>, ints []<span class="type">int</span>, val <span class="type">int</span>)</span></span> &#123;</span><br><span class="line">		<span class="keyword">if</span> val &lt; <span class="number">0</span> &#123;</span><br><span class="line">			<span class="keyword">return</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> val == <span class="number">0</span> &#123;</span><br><span class="line">			<span class="keyword">var</span> tmp = <span class="built_in">make</span>([]<span class="type">int</span>, <span class="built_in">len</span>(ints))</span><br><span class="line">			<span class="built_in">copy</span>(tmp, ints)</span><br><span class="line">			fmt.Println(<span class="string">&quot;append after copied ints&quot;</span>, tmp)</span><br><span class="line">			res = <span class="built_in">append</span>(res, tmp)</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">for</span> i := begin; i &lt; size; i++ &#123;</span><br><span class="line">			backtrack(candidate, i, size, <span class="built_in">append</span>(ints, candidate[i]), val - candidate[i])</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	backtrack(candidates, <span class="number">0</span>, <span class="built_in">len</span>(candidates), []<span class="type">int</span>&#123;&#125;, target)</span><br><span class="line">	<span class="keyword">return</span> res</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>输出:</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">append</span> after copied ints [<span class="number">7</span> <span class="number">3</span> <span class="number">2</span>]</span><br><span class="line"><span class="built_in">append</span> after copied ints [<span class="number">3</span> <span class="number">3</span> <span class="number">3</span> <span class="number">3</span>]</span><br><span class="line"><span class="built_in">append</span> after copied ints [<span class="number">3</span> <span class="number">3</span> <span class="number">2</span> <span class="number">2</span> <span class="number">2</span>]</span><br><span class="line"><span class="built_in">append</span> after copied ints [<span class="number">2</span> <span class="number">2</span> <span class="number">2</span> <span class="number">2</span> <span class="number">2</span> <span class="number">2</span>]</span><br><span class="line"><span class="built_in">append</span> after copied ints [<span class="number">2</span> <span class="number">2</span> <span class="number">8</span>]</span><br><span class="line">[[<span class="number">7</span> <span class="number">3</span> <span class="number">2</span>] [<span class="number">3</span> <span class="number">3</span> <span class="number">3</span> <span class="number">3</span>] [<span class="number">3</span> <span class="number">3</span> <span class="number">2</span> <span class="number">2</span> <span class="number">2</span>] [<span class="number">2</span> <span class="number">2</span> <span class="number">2</span> <span class="number">2</span> <span class="number">2</span> <span class="number">2</span>] [<span class="number">2</span> <span class="number">2</span> <span class="number">8</span>]]</span><br></pre></td></tr></table></figure>
+<p>算法提交通过👏<br><img src="/img/in-post/2022-01-15/img_18.png" alt="img_18.png"></p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/golang/" rel="tag"># golang</a>
+              <a href="/tags/%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%E4%B8%8E%E7%AE%97%E6%B3%95/" rel="tag"># 数据结构与算法</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2022/01/15/%E5%9B%9E%E6%BA%AF%E6%A8%A1%E7%89%88/" rel="prev" title="回溯模版">
+                  <i class="fa fa-chevron-left"></i> 回溯模版
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2022/02/24/2022-02-24-mysql(1)/" rel="next" title="Mysql锁">
+                  Mysql锁 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+
+<div class="copyright">
+  &copy; 
+  <span itemprop="copyrightYear">2023</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">enpsl</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>

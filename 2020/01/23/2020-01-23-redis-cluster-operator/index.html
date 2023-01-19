@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha256-Z1K5uhUaJXA7Ll0XrZ/0JhX4lAtZFpT6jkKrEDT0drU=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"enpsl.github.io","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.14.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="集群伸缩原理 集群伸缩&#x3D;槽和数据在节点之间的移动  扩容集群准备新节点新节点：  集群模式 配置和其它节点统一 启动后仍是孤儿节点   加入集群12cluster meet 127.0.0.1 6385cluster meet 127.0.0.1 6386  加入后的效果  加入集群的作用：  为它迁移槽和数据实现扩容 作为从节点负责故障转移  1redis-cli --cluster add-n">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Redis cluster 伸缩">
+<meta property="og:url" content="https://enpsl.github.io/2020/01/23/2020-01-23-redis-cluster-operator/index.html">
+<meta property="og:site_name" content="彭诗亮的博客">
+<meta property="og:description" content="集群伸缩原理 集群伸缩&#x3D;槽和数据在节点之间的移动  扩容集群准备新节点新节点：  集群模式 配置和其它节点统一 启动后仍是孤儿节点   加入集群12cluster meet 127.0.0.1 6385cluster meet 127.0.0.1 6386  加入后的效果  加入集群的作用：  为它迁移槽和数据实现扩容 作为从节点负责故障转移  1redis-cli --cluster add-n">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/1.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/2.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/3.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/4.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/6.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/7.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/8.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/9.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/10.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/11.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/12.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/13.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/14.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/15.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/16.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/17.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/18.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2019-01-23/19.png">
+<meta property="article:published_time" content="2020-01-23T14:30:00.000Z">
+<meta property="article:modified_time" content="2023-01-19T07:31:17.870Z">
+<meta property="article:author" content="enpsl">
+<meta property="article:tag" content="redis">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://enpsl.github.io/img/in-post/2019-01-23/1.png">
+
+
+<link rel="canonical" href="https://enpsl.github.io/2020/01/23/2020-01-23-redis-cluster-operator/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://enpsl.github.io/2020/01/23/2020-01-23-redis-cluster-operator/","path":"2020/01/23/2020-01-23-redis-cluster-operator/","title":"Redis cluster 伸缩"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>Redis cluster 伸缩 | 彭诗亮的博客</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">彭诗亮的博客</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%9B%86%E7%BE%A4%E4%BC%B8%E7%BC%A9%E5%8E%9F%E7%90%86"><span class="nav-number">1.</span> <span class="nav-text">集群伸缩原理</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%89%A9%E5%AE%B9%E9%9B%86%E7%BE%A4"><span class="nav-number">2.</span> <span class="nav-text">扩容集群</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%87%86%E5%A4%87%E6%96%B0%E8%8A%82%E7%82%B9"><span class="nav-number">2.1.</span> <span class="nav-text">准备新节点</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8A%A0%E5%85%A5%E9%9B%86%E7%BE%A4"><span class="nav-number">2.2.</span> <span class="nav-text">加入集群</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%BF%81%E7%A7%BB%E6%A7%BD%E5%92%8C%E6%95%B0%E6%8D%AE"><span class="nav-number">2.3.</span> <span class="nav-text">迁移槽和数据</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%A7%BD%E8%BF%81%E7%A7%BB%E8%AE%A1%E5%88%92"><span class="nav-number">2.3.1.</span> <span class="nav-text">槽迁移计划:</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%BF%81%E7%A7%BB%E6%95%B0%E6%8D%AE%EF%BC%9A"><span class="nav-number">2.3.2.</span> <span class="nav-text">迁移数据：</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E8%BF%81%E7%A7%BB%E4%BC%AApython%E4%BB%A3%E7%A0%81"><span class="nav-number">2.3.3.</span> <span class="nav-text">数据迁移伪python代码:</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#pipline%E8%BF%81%E7%A7%BB"><span class="nav-number">2.3.4.</span> <span class="nav-text">pipline迁移</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%89%A9%E5%AE%B9%E6%BC%94%E7%A4%BA"><span class="nav-number">3.</span> <span class="nav-text">扩容演示</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%8E%AF%E5%A2%83%E5%87%86%E5%A4%87"><span class="nav-number">3.1.</span> <span class="nav-text">环境准备</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#meet"><span class="nav-number">3.2.</span> <span class="nav-text">meet:</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#replicate"><span class="nav-number">3.3.</span> <span class="nav-text">replicate:</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%BF%81%E7%A7%BB%E6%95%B0%E6%8D%AE%EF%BC%9A-1"><span class="nav-number">3.4.</span> <span class="nav-text">迁移数据：</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%94%B6%E7%BC%A9%E9%9B%86%E7%BE%A4"><span class="nav-number">4.</span> <span class="nav-text">收缩集群</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%8B%E7%BA%BF%E8%BF%81%E7%A7%BB%E6%A7%BD"><span class="nav-number">4.1.</span> <span class="nav-text">下线迁移槽</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%BF%98%E8%AE%B0%E8%8A%82%E7%82%B9"><span class="nav-number">4.2.</span> <span class="nav-text">忘记节点</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%97%AD%E8%8A%82%E7%82%B9"><span class="nav-number">4.3.</span> <span class="nav-text">关闭节点</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%94%B6%E7%BC%A9%E9%9B%86%E7%BE%A4%E6%BC%94%E7%A4%BA"><span class="nav-number">5.</span> <span class="nav-text">收缩集群演示</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%BF%81%E7%A7%BB%E6%A7%BD%EF%BC%9A"><span class="nav-number">5.1.</span> <span class="nav-text">迁移槽：</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%BF%98%E8%AE%B0%E8%8A%82%E7%82%B9%EF%BC%9A"><span class="nav-number">5.2.</span> <span class="nav-text">忘记节点：</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%8C%E6%88%90%E7%BC%A9%E5%AE%B9"><span class="nav-number">5.3.</span> <span class="nav-text">完成缩容</span></a></li></ol></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">enpsl</p>
+  <div class="site-description" itemprop="description">my blog</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">31</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+          <a href="/tags/">
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://enpsl.github.io/2020/01/23/2020-01-23-redis-cluster-operator/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="enpsl">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="彭诗亮的博客">
+      <meta itemprop="description" content="my blog">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="Redis cluster 伸缩 | 彭诗亮的博客">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Redis cluster 伸缩
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2020-01-23 22:30:00" itemprop="dateCreated datePublished" datetime="2020-01-23T22:30:00+08:00">2020-01-23</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-01-19 15:31:17" itemprop="dateModified" datetime="2023-01-19T15:31:17+08:00">2023-01-19</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+        <h2 id="集群伸缩原理"><a href="#集群伸缩原理" class="headerlink" title="集群伸缩原理"></a>集群伸缩原理</h2><p><img src="/img/in-post/2019-01-23/1.png"><br><img src="/img/in-post/2019-01-23/2.png"></p>
+<center style="font-weight:bold">集群伸缩=槽和数据在节点之间的移动</center>
+
+<h2 id="扩容集群"><a href="#扩容集群" class="headerlink" title="扩容集群"></a>扩容集群</h2><h3 id="准备新节点"><a href="#准备新节点" class="headerlink" title="准备新节点"></a>准备新节点</h3><p>新节点：</p>
+<ul>
+<li>集群模式</li>
+<li>配置和其它节点统一</li>
+<li>启动后仍是孤儿节点</li>
+</ul>
+<p><img src="/img/in-post/2019-01-23/3.png"></p>
+<h3 id="加入集群"><a href="#加入集群" class="headerlink" title="加入集群"></a>加入集群</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">cluster meet 127.0.0.1 6385</span><br><span class="line">cluster meet 127.0.0.1 6386</span><br></pre></td></tr></table></figure>
+<p><img src="/img/in-post/2019-01-23/4.png"></p>
+<center style="font-weight:bold">加入后的效果</center>
+
+<p>加入集群的作用：</p>
+<ul>
+<li>为它迁移槽和数据实现扩容</li>
+<li>作为从节点负责故障转移</li>
+</ul>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redis-cli --cluster add-node new_host:new_port existing_host:existing_port --cluster-slave --cluster-master-id &lt;arg&gt;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>建议使用redis-trib.rb能够避免新节点已经加入了其它集群，造成故障</p>
+</blockquote>
+<h3 id="迁移槽和数据"><a href="#迁移槽和数据" class="headerlink" title="迁移槽和数据"></a>迁移槽和数据</h3><h4 id="槽迁移计划"><a href="#槽迁移计划" class="headerlink" title="槽迁移计划:"></a>槽迁移计划:</h4><p><img src="/img/in-post/2019-01-23/6.png"><br><img src="/img/in-post/2019-01-23/7.png"></p>
+<h4 id="迁移数据："><a href="#迁移数据：" class="headerlink" title="迁移数据："></a>迁移数据：</h4><ol>
+<li>对目标节点发送: cluster setslot{slot} importing {sourceNodeId}命令，让目标节点准备导入槽的数据。</li>
+<li>对源节点发送: cluster setslot{slot} migrating {targetNodeId}命令，让源节点准备迁出槽的数据。</li>
+<li>源节点循环执行: cluster getkeysinslot{slot}{count}命令，每次获取count个属于槽的键。</li>
+<li>在源节点执行: migrate {targetIP}{targetPort} key 0 {timeout}命令把指定key迁移。</li>
+<li>重复执行3-4直到槽下所有数据节点均迁移到目标节点。</li>
+<li>向集群内所有主节点发送cluster setslot{slot} node {targetNodeId}命令，通知槽分配给目标节点。</li>
+</ol>
+<h4 id="数据迁移伪python代码"><a href="#数据迁移伪python代码" class="headerlink" title="数据迁移伪python代码:"></a>数据迁移伪python代码:</h4><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">move_slot</span>(<span class="params">source,target,slot</span>):</span><br><span class="line">    <span class="comment">#目标节点准备导入槽slot</span></span><br><span class="line">    target.cluster(<span class="string">&quot;setslot&quot;</span>,slot,<span class="string">&quot;importing&quot;</span>,source.nodeID)</span><br><span class="line">    <span class="comment">#目标节点准备全出槽slot</span></span><br><span class="line">    target.cluster(<span class="string">&quot;setslot&quot;</span>,slot,<span class="string">&quot;migrating&quot;</span>,source.nodeID) </span><br><span class="line">    <span class="keyword">while</span> <span class="literal">True</span>:</span><br><span class="line">        <span class="comment">#批量从源节点获取键</span></span><br><span class="line">        keys = source.cluster(<span class="string">&quot;getkeysinslot&quot;</span>,slot,pipeline_size)</span><br><span class="line">        <span class="keyword">if</span> keys.length ==<span class="number">0</span>:</span><br><span class="line">            <span class="comment">#键列表为空时，退出循环</span></span><br><span class="line">            <span class="keyword">break</span></span><br><span class="line">    <span class="comment">#批量迁移键到目标节点</span></span><br><span class="line">    source.call(<span class="string">&quot;migrate&quot;</span>,target.host,target.port,<span class="string">&quot;&quot;</span>,timeout,<span class="string">&quot;keys&quot;</span>)</span><br><span class="line">    <span class="comment">#向集群所有主节点通知槽slot被分配给目标节点</span></span><br><span class="line">    <span class="keyword">for</span> node <span class="keyword">in</span> nodes:</span><br><span class="line">        <span class="keyword">if</span> node.flag ==<span class="string">&quot;slave&quot;</span>:</span><br><span class="line">            <span class="keyword">continue</span></span><br><span class="line">        node.cluster(<span class="string">&quot;setslot&quot;</span>,slot,<span class="string">&quot;node&quot;</span>,target.nodeID)</span><br></pre></td></tr></table></figure>
+
+<h4 id="pipline迁移"><a href="#pipline迁移" class="headerlink" title="pipline迁移"></a>pipline迁移</h4><p><img src="/img/in-post/2019-01-23/8.png"></p>
+<blockquote>
+<p>3.0.6 版本pipline数据迁移会有丢失数据bug，在3.2.8已解决</p>
+</blockquote>
+<h2 id="扩容演示"><a href="#扩容演示" class="headerlink" title="扩容演示"></a>扩容演示</h2><h3 id="环境准备"><a href="#环境准备" class="headerlink" title="环境准备"></a>环境准备</h3><p><img src="/img/in-post/2019-01-23/9.png"><br>当前集群是三主三从结构，此时我们加入两个新节点7006,7007。7007是7006的从节点，我们需要从7001,7002节点把一部分数据迁移给7006。<br>配置准备:</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sed <span class="string">&#x27;s/7000/7006/g&#x27;</span> redis-7000.conf &gt; redis-7006.conf</span><br><span class="line">sed <span class="string">&#x27;s/7000/7007/g&#x27;</span> redis-7000.conf &gt; redis-7007.conf</span><br></pre></td></tr></table></figure>
+<h3 id="meet"><a href="#meet" class="headerlink" title="meet:"></a>meet:</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">redis-cli -p 7000 cluster meet 127.0.0.1 7006</span><br><span class="line">redis-cli -p 7000 cluster meet 127.0.0.1 7007</span><br></pre></td></tr></table></figure>
+<h3 id="replicate"><a href="#replicate" class="headerlink" title="replicate:"></a>replicate:</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redis-cli -p 7007 cluster replicate d57d27051ce9db7752f894394b621368f9e0a058</span><br></pre></td></tr></table></figure>
+<p><img src="/img/in-post/2019-01-23/10.png"></p>
+<blockquote>
+<p>此时7007已经属于7006的从节点</p>
+</blockquote>
+<h3 id="迁移数据：-1"><a href="#迁移数据：-1" class="headerlink" title="迁移数据："></a>迁移数据：</h3><blockquote>
+<p>由于槽数量比较多，所以这里使用redis-trib来迁移</p>
+</blockquote>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redis-cli --cluster reshard 127.0.0.1 7000</span><br></pre></td></tr></table></figure>
+
+<p><img src="/img/in-post/2019-01-23/11.png"><br>此时给我们提示出了当前集群的信息，由于我们现在是4个主节点，所以需要分成四等份来支持向master写入数据<br><img src="/img/in-post/2019-01-23/12.png"><br><img src="/img/in-post/2019-01-23/13.png"></p>
+<p>槽迁移后的信息：<br><img src="/img/in-post/2019-01-23/14.png"></p>
+<h2 id="收缩集群"><a href="#收缩集群" class="headerlink" title="收缩集群"></a>收缩集群</h2><h3 id="下线迁移槽"><a href="#下线迁移槽" class="headerlink" title="下线迁移槽"></a>下线迁移槽</h3><p><img src="/img/in-post/2019-01-23/15.png"></p>
+<h3 id="忘记节点"><a href="#忘记节点" class="headerlink" title="忘记节点"></a>忘记节点</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redis-cli&gt;cluster forget &#123;downNodeId&#125;</span><br></pre></td></tr></table></figure>
+<p><img src="/img/in-post/2019-01-23/16.png"></p>
+<h3 id="关闭节点"><a href="#关闭节点" class="headerlink" title="关闭节点"></a>关闭节点</h3><h2 id="收缩集群演示"><a href="#收缩集群演示" class="headerlink" title="收缩集群演示"></a>收缩集群演示</h2><p>例：下线7006，7007</p>
+<h3 id="迁移槽："><a href="#迁移槽：" class="headerlink" title="迁移槽："></a>迁移槽：</h3><p>迁移过程命令：</p>
+<p>redis-cli –cluster reshard –cluster-from {7006nodeid} –cluster-to 7000{7000nodeid} –cluster-slots {slot num} 127.0.0.1:7006</p>
+<p>redis-cli –cluster reshard –cluster-from {7006nodeid} –cluster-to 7001{7001nodeid} –cluster-slots {slot num} 127.0.0.1:7006</p>
+<p>redis-cli –cluster reshard –cluster-from {7006nodeid} –cluster-to 7002{7002nodeid} –cluster-slots {slot num} 127.0.0.1:7006</p>
+<p>迁移到7000示例：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redis-cli --cluster reshard --cluster-from d57d27051ce9db7752f894394b621368f9e0a058 --cluster-to 092fd7c3cf19693eddec5c0fae9894d681023ce5 --cluster-slots 1365 127.0.0.1:7006</span><br></pre></td></tr></table></figure>
+<p>之后选择yes即可</p>
+<p><img src="/img/in-post/2019-01-23/17.png"><br>可观察出0-1364的槽节点以迁移完毕，重复上述步骤，迁移剩余的槽</p>
+<p>迁移后：<br><img src="/img/in-post/2019-01-23/18.png"></p>
+<h3 id="忘记节点："><a href="#忘记节点：" class="headerlink" title="忘记节点："></a>忘记节点：</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">redis-cli --cluster del-node 127.0.0.1:7000 d57d27051ce9db7752f894394b621368f9e0a058</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>需要先下线从节点在下线主节点，否则会发生故障转移</p>
+</blockquote>
+<h3 id="完成缩容"><a href="#完成缩容" class="headerlink" title="完成缩容"></a>完成缩容</h3><p><img src="/img/in-post/2019-01-23/19.png"></p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/redis/" rel="tag"># redis</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2020/01/20/2020-01-20-redis-cluster/" rel="prev" title="Redis cluster">
+                  <i class="fa fa-chevron-left"></i> Redis cluster
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2020/01/24/2020-01-24-redis-cluster-route/" rel="next" title="Redis cluster 客户端路由">
+                  Redis cluster 客户端路由 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+
+<div class="copyright">
+  &copy; 
+  <span itemprop="copyrightYear">2023</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">enpsl</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>

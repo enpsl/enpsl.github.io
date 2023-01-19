@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha256-Z1K5uhUaJXA7Ll0XrZ/0JhX4lAtZFpT6jkKrEDT0drU=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"enpsl.github.io","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.14.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="Query-Then-FetchSearch执行的时候实际分两个步骤运作的  Query阶段 Fetch阶段  在es里被称为Query-Then-Fetch机制 Search的运行机制-Query阶段node3在接收到用户的search请求后,会先进行Query阶段(此时是CoordinatingNode角色)node3在6个主副分片中随机选择3个分片,发送search request被选中的3">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Elasticsearch Search运行机制">
+<meta property="og:url" content="https://enpsl.github.io/2022/04/12/2022-04-12-elasticsearch-num6/index.html">
+<meta property="og:site_name" content="彭诗亮的博客">
+<meta property="og:description" content="Query-Then-FetchSearch执行的时候实际分两个步骤运作的  Query阶段 Fetch阶段  在es里被称为Query-Then-Fetch机制 Search的运行机制-Query阶段node3在接收到用户的search请求后,会先进行Query阶段(此时是CoordinatingNode角色)node3在6个主副分片中随机选择3个分片,发送search request被选中的3">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2022-04-12T06:30:00.000Z">
+<meta property="article:modified_time" content="2023-01-19T07:31:17.879Z">
+<meta property="article:author" content="enpsl">
+<meta property="article:tag" content="elasticsearch">
+<meta name="twitter:card" content="summary">
+
+
+<link rel="canonical" href="https://enpsl.github.io/2022/04/12/2022-04-12-elasticsearch-num6/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://enpsl.github.io/2022/04/12/2022-04-12-elasticsearch-num6/","path":"2022/04/12/2022-04-12-elasticsearch-num6/","title":"Elasticsearch Search运行机制"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>Elasticsearch Search运行机制 | 彭诗亮的博客</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">彭诗亮的博客</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#Query-Then-Fetch"><span class="nav-number">1.</span> <span class="nav-text">Query-Then-Fetch</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Search%E7%9A%84%E8%BF%90%E8%A1%8C%E6%9C%BA%E5%88%B6-Query%E9%98%B6%E6%AE%B5"><span class="nav-number">1.1.</span> <span class="nav-text">Search的运行机制-Query阶段</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Search%E7%9A%84%E8%BF%90%E8%A1%8C%E6%9C%BA%E5%88%B6-Fetch%E9%98%B6%E6%AE%B5"><span class="nav-number">1.2.</span> <span class="nav-text">Search的运行机制-Fetch阶段</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Search%E7%9A%84%E8%BF%90%E8%A1%8C%E6%9C%BA%E5%88%B6-%E7%9B%B8%E5%85%B3%E6%80%A7%E7%AE%97%E5%88%86%E9%97%AE%E9%A2%98"><span class="nav-number">1.3.</span> <span class="nav-text">Search的运行机制-相关性算分问题</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#sorting"><span class="nav-number">1.4.</span> <span class="nav-text">sorting</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Fileddata-vs-DocValues"><span class="nav-number">1.5.</span> <span class="nav-text">Fileddata vs DocValues</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%86%E9%A1%B5%E4%B8%8E%E9%81%8D%E5%8E%86"><span class="nav-number">1.6.</span> <span class="nav-text">分页与遍历</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%86%E9%A1%B5%E4%B8%8E%E9%81%8D%E5%8E%86-scroll"><span class="nav-number">1.7.</span> <span class="nav-text">分页与遍历-scroll</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%88%86%E9%A1%B5%E4%B8%8E%E9%81%8D%E5%8E%86-search-after"><span class="nav-number">1.8.</span> <span class="nav-text">分页与遍历-search_after</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9C%BA%E6%99%AF"><span class="nav-number">1.9.</span> <span class="nav-text">场景:</span></a></li></ol></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">enpsl</p>
+  <div class="site-description" itemprop="description">my blog</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">31</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+          <a href="/tags/">
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://enpsl.github.io/2022/04/12/2022-04-12-elasticsearch-num6/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="enpsl">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="彭诗亮的博客">
+      <meta itemprop="description" content="my blog">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="Elasticsearch Search运行机制 | 彭诗亮的博客">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          Elasticsearch Search运行机制
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2022-04-12 14:30:00" itemprop="dateCreated datePublished" datetime="2022-04-12T14:30:00+08:00">2022-04-12</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-01-19 15:31:17" itemprop="dateModified" datetime="2023-01-19T15:31:17+08:00">2023-01-19</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+        <h2 id="Query-Then-Fetch"><a href="#Query-Then-Fetch" class="headerlink" title="Query-Then-Fetch"></a>Query-Then-Fetch</h2><p>Search执行的时候实际分两个步骤运作的</p>
+<ul>
+<li>Query阶段</li>
+<li>Fetch阶段</li>
+</ul>
+<p>在es里被称为Query-Then-Fetch机制</p>
+<h3 id="Search的运行机制-Query阶段"><a href="#Search的运行机制-Query阶段" class="headerlink" title="Search的运行机制-Query阶段"></a>Search的运行机制-Query阶段</h3><p>node3在接收到用户的search请求后,会先进行Query阶段(此时是CoordinatingNode角色)<br>node3在6个主副分片中随机选择3个分片,发送search request<br>被选中的3个分片会分别执行查询并排序,返回from+size个文档Id和排序值<br>node3整合3个分片返回的from+size个文档Id ,根据排序值排序后选取from到from+size的文档Id</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;from&quot;: 10,</span><br><span class="line">  &quot;size&quot;: 20</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>表示从第10个文档开始，截取第10-29的文档</p>
+</blockquote>
+<h3 id="Search的运行机制-Fetch阶段"><a href="#Search的运行机制-Fetch阶段" class="headerlink" title="Search的运行机制-Fetch阶段"></a>Search的运行机制-Fetch阶段</h3><p>node3根据Query阶段获取的文档Id列表去对应的shard上获取文档详情数据a</p>
+<ul>
+<li>node3向相关的分片发送multi-get请求</li>
+<li>3个分片返回文档详细数据</li>
+<li>node3拼接返回的结果并返回给客户</li>
+</ul>
+<h3 id="Search的运行机制-相关性算分问题"><a href="#Search的运行机制-相关性算分问题" class="headerlink" title="Search的运行机制-相关性算分问题"></a>Search的运行机制-相关性算分问题</h3><p>相关性算分在shard与shard间是相互独立的,也就意味着同一个Term的IDF等值在不同shard上是不同的。文档的相关性算分和它所处的shard相关</p>
+<p>在文档数量不多时,会导致相关性算分严重不准的情况发生</p>
+<p>加上<code>explain</code>参数可查看文档内容所在shard</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;explain&quot;: true, </span><br><span class="line">  &quot;query&quot;: &#123;</span><br><span class="line">    &quot;match&quot;: &#123;</span><br><span class="line">      &quot;genre&quot;: &#123;</span><br><span class="line">        &quot;query&quot;: &quot;Comedy Children&quot;,</span><br><span class="line">        &quot;operator&quot;: &quot;and&quot;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>解决思路有两个:</p>
+<p>一是设置分片数为1个,从根本上排除问题,在文档数量不多的时候可以考虑该方。案,比如百万到千万级别的文档数量<br>二是使用<code>DFS Query-then-Fetch</code>查询方式.<code>DFS Query-then-Fetch</code>是在拿到所有文档后再重新完整的计算一次相关性算分,耗费更多的cpu和内存,执行性能也比较低下,一般不建议使用。使用方式如下:</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search?search_type=dfs_query_then_fetch</span><br><span class="line">&#123;</span><br><span class="line">  &quot;explain&quot;: false, </span><br><span class="line">  &quot;query&quot;: &#123;</span><br><span class="line">    &quot;match&quot;: &#123;</span><br><span class="line">      &quot;genre&quot;: &#123;</span><br><span class="line">        &quot;query&quot;: &quot;Comedy Children&quot;,</span><br><span class="line">        &quot;operator&quot;: &quot;and&quot;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="sorting"><a href="#sorting" class="headerlink" title="sorting"></a>sorting</h3><p>es默认会采用相关性算分排序,用户可以通过设定<code>sort</code>参数来自行设定排序规则</p>
+<p>排序的过程实质是对字段原始内容排序的过程,这个过程中倒排索引无法发挥作用,需要用到正排索引,也就是通过文档Id和字段可以快速得到字段原始内容。</p>
+<p>es对此提供了2种实现方式:</p>
+<ul>
+<li>fielddata默认禁用</li>
+<li>doc values默认启用,除了text类型</li>
+</ul>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;sort&quot;: [</span><br><span class="line">    &#123;</span><br><span class="line">      &quot;title&quot;: &#123;</span><br><span class="line">        &quot;order&quot;: &quot;desc&quot;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>response:</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;error&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;root_cause&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Fielddata is disabled on text fields by default. Set fielddata=true on [title] in order to load fielddata in memory by uninverting the inverted index. Note that this can however use significant memory. Alternatively use a keyword field instead.&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;search_phase_execution_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;all shards failed&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;phase&quot;</span><span class="punctuation">:</span> <span class="string">&quot;query&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;grouped&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;failed_shards&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;shard&quot;</span><span class="punctuation">:</span> <span class="number">0</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;index&quot;</span><span class="punctuation">:</span> <span class="string">&quot;movies&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;node&quot;</span><span class="punctuation">:</span> <span class="string">&quot;6pljLZ0vQQKObirnkOOsnw&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Fielddata is disabled on text fields by default. Set fielddata=true on [title] in order to load fielddata in memory by uninverting the inverted index. Note that this can however use significant memory. Alternatively use a keyword field instead.&quot;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;caused_by&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Fielddata is disabled on text fields by default. Set fielddata=true on [title] in order to load fielddata in memory by uninverting the inverted index. Note that this can however use significant memory. Alternatively use a keyword field instead.&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;caused_by&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Fielddata is disabled on text fields by default. Set fielddata=true on [title] in order to load fielddata in memory by uninverting the inverted index. Note that this can however use significant memory. Alternatively use a keyword field instead.&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="number">400</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+<p>解决办法:</p>
+<ul>
+<li>使用keyword排序</li>
+<li>fielddata开启<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;sort&quot;: [</span><br><span class="line">    &#123;</span><br><span class="line">      &quot;title.keyword&quot;: &#123;</span><br><span class="line">        &quot;order&quot;: &quot;desc&quot;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></li>
+</ul>
+<h3 id="Fileddata-vs-DocValues"><a href="#Fileddata-vs-DocValues" class="headerlink" title="Fileddata vs DocValues"></a>Fileddata vs DocValues</h3><table>
+<thead>
+<tr>
+<th>对比</th>
+<th>Fileddata</th>
+<th>DocValues</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>创建时机</td>
+<td>搜索时即时创建</td>
+<td>索引时创建</td>
+</tr>
+<tr>
+<td>创建位置</td>
+<td>JVM Heap</td>
+<td>磁盘</td>
+</tr>
+<tr>
+<td>优点</td>
+<td>不占用磁盘空间</td>
+<td>不占用Heap内存</td>
+</tr>
+<tr>
+<td>缺点</td>
+<td>文档过多时，即时创建花费时间长，内存占用高</td>
+<td>减慢索引的速度，占用磁盘空间</td>
+</tr>
+</tbody></table>
+<p>Fielddata默认是关闭的,可以通过如下api开启:</p>
+<ul>
+<li>此时字符串是按照分词后的term排序,往往结果很难符合预期</li>
+<li>一般是在对分词做聚合分析的时候开启,</li>
+</ul>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">PUT movies/_mapping</span><br><span class="line">&#123;</span><br><span class="line">  &quot;properties&quot;: &#123;</span><br><span class="line">    &quot;title&quot;: &#123;</span><br><span class="line">      &quot;type&quot;: &quot;text&quot;,</span><br><span class="line">      &quot;fielddata&quot;: true     # 可随时开启</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"># 开启后在查询不会报错</span><br><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;sort&quot;: [</span><br><span class="line">    &#123;</span><br><span class="line">      &quot;title.keyword&quot;: &#123;</span><br><span class="line">        &quot;order&quot;: &quot;desc&quot;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Doc Values默认是启用的,可以在创建索引的时候关闭:-如果后面要再开启doc values ,需要做reindex操作</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">DELETE test_doc_values</span><br><span class="line">PUT test_doc_values</span><br><span class="line">PUT test_doc_values/_mapping</span><br><span class="line">&#123;</span><br><span class="line">  &quot;properties&quot;: &#123;</span><br><span class="line">    &quot;username&quot;: &#123;</span><br><span class="line">      &quot;type&quot;: &quot;keyword&quot;,</span><br><span class="line">      &quot;doc_values&quot;: false</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>关闭后在排序会报错</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">GET test_doc_values/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;sort&quot;: [</span><br><span class="line">    &#123;</span><br><span class="line">      &quot;username&quot;: &#123;</span><br><span class="line">        &quot;order&quot;: &quot;desc&quot;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;error&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;root_cause&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Can&#x27;t load fielddata on [username] because fielddata is unsupported on fields of type [keyword]. Use doc values instead.&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;search_phase_execution_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;all shards failed&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;phase&quot;</span><span class="punctuation">:</span> <span class="string">&quot;query&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;grouped&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;failed_shards&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;shard&quot;</span><span class="punctuation">:</span> <span class="number">0</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;index&quot;</span><span class="punctuation">:</span> <span class="string">&quot;test_doc_values&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;node&quot;</span><span class="punctuation">:</span> <span class="string">&quot;6pljLZ0vQQKObirnkOOsnw&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Can&#x27;t load fielddata on [username] because fielddata is unsupported on fields of type [keyword]. Use doc values instead.&quot;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;caused_by&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Can&#x27;t load fielddata on [username] because fielddata is unsupported on fields of type [keyword]. Use doc values instead.&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;caused_by&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Can&#x27;t load fielddata on [username] because fielddata is unsupported on fields of type [keyword]. Use doc values instead.&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="number">400</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>text类型不支持Doc Values,Fielddata只能支持与text类型</p>
+</blockquote>
+<h3 id="分页与遍历"><a href="#分页与遍历" class="headerlink" title="分页与遍历"></a>分页与遍历</h3><p>分页与遍历-fromsize</p>
+<p>es提供了3种方式来解决分页与遍历的问题:</p>
+<ul>
+<li>from&#x2F;size</li>
+<li>scroll</li>
+<li>search_after<br>from&#x2F;size最常用的分页方案</li>
+</ul>
+<p>from指明开始位置size指明获取总数</p>
+<p><strong>深度分页是一个经典的问题:在数据分片存储的情况下如何获取前1000个文档?</strong><br>获取从990-1000的文档时,会在每个分片上都先获取1000个文档,然后再由.Coordinating Node聚合所有分片的结果后再排序选取前1000个文档<br>页数越深,处理文档越多,占用内存越多,耗时越长,尽量避免深度分页, es通过 index.max_result_window限定最多到10000条数据</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;from&quot;: 10,</span><br><span class="line">  &quot;size&quot;: 10000</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;from&quot;: 10000,</span><br><span class="line">  &quot;size&quot;: 10</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>response</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;error&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;root_cause&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Result window is too large, from + size must be less than or equal to: [10000] but was [10010]. See the scroll api for a more efficient way to request large data sets. This limit can be set by changing the [index.max_result_window] index level setting.&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;search_phase_execution_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;all shards failed&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;phase&quot;</span><span class="punctuation">:</span> <span class="string">&quot;query&quot;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;grouped&quot;</span><span class="punctuation">:</span> <span class="literal"><span class="keyword">true</span></span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;failed_shards&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;shard&quot;</span><span class="punctuation">:</span> <span class="number">0</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;index&quot;</span><span class="punctuation">:</span> <span class="string">&quot;movies&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;node&quot;</span><span class="punctuation">:</span> <span class="string">&quot;6pljLZ0vQQKObirnkOOsnw&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Result window is too large, from + size must be less than or equal to: [10000] but was [10010]. See the scroll api for a more efficient way to request large data sets. This limit can be set by changing the [index.max_result_window] index level setting.&quot;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;caused_by&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Result window is too large, from + size must be less than or equal to: [10000] but was [10010]. See the scroll api for a more efficient way to request large data sets. This limit can be set by changing the [index.max_result_window] index level setting.&quot;</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;caused_by&quot;</span><span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;type&quot;</span><span class="punctuation">:</span> <span class="string">&quot;illegal_argument_exception&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;reason&quot;</span><span class="punctuation">:</span> <span class="string">&quot;Result window is too large, from + size must be less than or equal to: [10000] but was [10010]. See the scroll api for a more efficient way to request large data sets. This limit can be set by changing the [index.max_result_window] index level setting.&quot;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">&#125;</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;status&quot;</span><span class="punctuation">:</span> <span class="number">400</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="分页与遍历-scroll"><a href="#分页与遍历-scroll" class="headerlink" title="分页与遍历-scroll"></a>分页与遍历-scroll</h3><p>遍历文档集的api ,以快照的方式来避免深度分页的问题</p>
+<ul>
+<li>不能用来做实时搜索,因为数据不是实时的</li>
+<li>尽量不要使用复杂的sort条件,使用_doc最高效</li>
+<li>使用稍嫌复杂</li>
+</ul>
+<p>第一步需要发起1个scroll search:</p>
+<p>es在收到该请求后会根据查询条件创建文档Id合集的快照</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search?scroll=5m</span><br><span class="line">&#123;</span><br><span class="line">  &quot;size&quot;: 1</span><br><span class="line">&#125;</span><br><span class="line">5m至快照有效时常，size返回条数</span><br></pre></td></tr></table></figure>
+<p>response</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;_scroll_id&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;DnF1ZXJ5VGhlbkZldGNoAgAAAAAAAAagFnY3WnRoVnRLVDNtWncyZ3k4QzlKU1EAAAAAAAAGnxZ2N1p0aFZ0S1QzbVp3Mmd5OEM5SlNR&quot;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;took&quot;</span> <span class="punctuation">:</span> <span class="number">3</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;timed_out&quot;</span> <span class="punctuation">:</span> <span class="literal"><span class="keyword">false</span></span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;_shards&quot;</span> <span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;total&quot;</span> <span class="punctuation">:</span> <span class="number">2</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;successful&quot;</span> <span class="punctuation">:</span> <span class="number">2</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;skipped&quot;</span> <span class="punctuation">:</span> <span class="number">0</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;failed&quot;</span> <span class="punctuation">:</span> <span class="number">0</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;hits&quot;</span> <span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;total&quot;</span> <span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;value&quot;</span> <span class="punctuation">:</span> <span class="number">9743</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;relation&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;eq&quot;</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;max_score&quot;</span> <span class="punctuation">:</span> <span class="number">1.0</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;hits&quot;</span> <span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;_index&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;movies&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_type&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;_doc&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_id&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;movieId&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_score&quot;</span> <span class="punctuation">:</span> <span class="number">1.0</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_source&quot;</span> <span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;year&quot;</span> <span class="punctuation">:</span> <span class="number">0</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;title&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;title&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;@version&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;1&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;genre&quot;</span> <span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">            <span class="string">&quot;genres&quot;</span></span><br><span class="line">          <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;id&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;movieId&quot;</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+<p>第二步调用scroll search的api ,获取文档集合</p>
+<p>不断迭代调用直到返回hits.hits数组为空时停止</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">POST _search/scroll</span><br><span class="line">&#123;</span><br><span class="line">  &quot;scroll&quot;: &quot;5m&quot;,</span><br><span class="line">  &quot;scroll_id&quot;: &quot;DnF1ZXJ5VGhlbkZldGNoAgAAAAAAAAagFnY3WnRoVnRLVDNtWncyZ3k4QzlKU1EAAAAAAAAGnxZ2N1p0aFZ0S1QzbVp3Mmd5OEM5SlNR&quot;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>过多的scroll调用会占用大量内存,可以通过clear api删除过多的scroll快照:</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">DELETE _search/scroll</span><br><span class="line">&#123;</span><br><span class="line">  &quot;scroll_id&quot;:[&quot;DnF1ZXJ5VGhlbkZldGNoAgAAAAAAAAagFnY3WnRoVnRLVDNtWncyZ3k4QzlKU1EAAAAAAAAGnxZ2N1p0aFZ0S1QzbVp3Mmd5OEM5SlNR&quot;]</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">DELETE _search/scroll/_all</span><br></pre></td></tr></table></figure>
+
+<h3 id="分页与遍历-search-after"><a href="#分页与遍历-search-after" class="headerlink" title="分页与遍历-search_after"></a>分页与遍历-search_after</h3><p>避免深度分页的性能问题,提供实时的下一页文档获取功能</p>
+<ul>
+<li>缺点是不能使用from参数,即不能指定页数</li>
+<li>只能下一页,不能上一页</li>
+<li>使用简单</li>
+</ul>
+<p>第一步为正常的搜索,但要指定sort值,并保证值唯一<br>第二步为使用上一步最后一个文档的sort值进行查询</p>
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;size&quot;: 1, </span><br><span class="line">  &quot;sort&quot;: [</span><br><span class="line">    &#123;</span><br><span class="line">      &quot;year&quot;: &quot;desc&quot;,</span><br><span class="line">      &quot;title&quot;: &quot;desc&quot;</span><br><span class="line">    &#125;</span><br><span class="line">  ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">  <span class="attr">&quot;took&quot;</span> <span class="punctuation">:</span> <span class="number">4</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;timed_out&quot;</span> <span class="punctuation">:</span> <span class="literal"><span class="keyword">false</span></span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;_shards&quot;</span> <span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;total&quot;</span> <span class="punctuation">:</span> <span class="number">2</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;successful&quot;</span> <span class="punctuation">:</span> <span class="number">2</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;skipped&quot;</span> <span class="punctuation">:</span> <span class="number">0</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;failed&quot;</span> <span class="punctuation">:</span> <span class="number">0</span></span><br><span class="line">  <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">  <span class="attr">&quot;hits&quot;</span> <span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;total&quot;</span> <span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">      <span class="attr">&quot;value&quot;</span> <span class="punctuation">:</span> <span class="number">9743</span><span class="punctuation">,</span></span><br><span class="line">      <span class="attr">&quot;relation&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;eq&quot;</span></span><br><span class="line">    <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;max_score&quot;</span> <span class="punctuation">:</span> <span class="literal"><span class="keyword">null</span></span><span class="punctuation">,</span></span><br><span class="line">    <span class="attr">&quot;hits&quot;</span> <span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">      <span class="punctuation">&#123;</span></span><br><span class="line">        <span class="attr">&quot;_index&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;movies&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_type&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;_doc&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_id&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;187717&quot;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_score&quot;</span> <span class="punctuation">:</span> <span class="literal"><span class="keyword">null</span></span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;_source&quot;</span> <span class="punctuation">:</span> <span class="punctuation">&#123;</span></span><br><span class="line">          <span class="attr">&quot;year&quot;</span> <span class="punctuation">:</span> <span class="number">2018</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;title&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;Won&#x27;t You Be My Neighbor?&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;@version&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;1&quot;</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;genre&quot;</span> <span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">            <span class="string">&quot;Documentary&quot;</span></span><br><span class="line">          <span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">          <span class="attr">&quot;id&quot;</span> <span class="punctuation">:</span> <span class="string">&quot;187717&quot;</span></span><br><span class="line">        <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="attr">&quot;sort&quot;</span> <span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">          <span class="number">2018</span><span class="punctuation">,</span></span><br><span class="line">          <span class="string">&quot;you&quot;</span></span><br><span class="line">        <span class="punctuation">]</span></span><br><span class="line">      <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line">  <span class="punctuation">&#125;</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<figure class="highlight http"><figcaption><span>request</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">GET movies/_search</span><br><span class="line">&#123;</span><br><span class="line">  &quot;size&quot;: 1,</span><br><span class="line">  &quot;sort&quot;: [</span><br><span class="line">    &#123;</span><br><span class="line">      &quot;year&quot;: &quot;desc&quot;,</span><br><span class="line">      &quot;title&quot;: &quot;desc&quot;</span><br><span class="line">    &#125;</span><br><span class="line">  ],</span><br><span class="line">  &quot;search_after&quot;: [2018,&quot;you&quot;]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如何避免深度分页问题?<br>通过唯一排序值定位将每次要处理的文档数都控制在size内</p>
+<p>返回排序值在search after之后的size个文档，假如size&#x3D;10,有5个分片，Coordinating Node只需要聚合5个分片取10个文档共50个文档，然后在取前10个文档返回即可<br>有效的控制了聚合的文档的数量</p>
+<h3 id="场景"><a href="#场景" class="headerlink" title="场景:"></a>场景:</h3><table>
+<thead>
+<tr>
+<th>类型</th>
+<th>场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>from&#x2F;size</td>
+<td>需要实时获取顶部的文档，可自由分页</td>
+</tr>
+<tr>
+<td>scroll</td>
+<td>需要全部文档，常用于导出，数据非实时</td>
+</tr>
+<tr>
+<td>search after</td>
+<td>需要全部的文档，不需要自由分页，数据实时</td>
+</tr>
+</tbody></table>
+<p><a target="_blank" rel="noopener" href="https://www.elastic.co/guide/en/elasticsearch/reference/current/search.html">search 官方文档</a></p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/elasticsearch/" rel="tag"># elasticsearch</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2022/03/31/2022-03-31-elasticsearch-term/" rel="prev" title="Elasticsearch Term Match">
+                  <i class="fa fa-chevron-left"></i> Elasticsearch Term Match
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2022/12/01/2022-12-01-mysql-per-analysis/" rel="next" title="mysql语句查询性能分析">
+                  mysql语句查询性能分析 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+
+<div class="copyright">
+  &copy; 
+  <span itemprop="copyrightYear">2023</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">enpsl</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>

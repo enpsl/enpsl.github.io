@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha256-Z1K5uhUaJXA7Ll0XrZ/0JhX4lAtZFpT6jkKrEDT0drU=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"enpsl.github.io","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.14.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="前言一般情况下，如果谈起查询性能优化，多数人的第一感知都是想到一些复杂的语句，想到查询需要返回大量的数据。但有些情况下，“查一行”，也会执行得特别慢。今天，就来探讨这个问题，看看什么情况下，会出现这个现象。 当然，如果 MySQL 数据库本身就有很大的压力，导致数据库服务器 CPU 占用率很高或 ioutil（IO 利用率）很高，这种情况下所有语句的执行都有可能变慢，不属于今天的探讨范围。 正题首">
+<meta property="og:type" content="article">
+<meta property="og:title" content="mysql语句查询性能分析">
+<meta property="og:url" content="https://enpsl.github.io/2022/12/01/2022-12-01-mysql-per-analysis/index.html">
+<meta property="og:site_name" content="彭诗亮的博客">
+<meta property="og:description" content="前言一般情况下，如果谈起查询性能优化，多数人的第一感知都是想到一些复杂的语句，想到查询需要返回大量的数据。但有些情况下，“查一行”，也会执行得特别慢。今天，就来探讨这个问题，看看什么情况下，会出现这个现象。 当然，如果 MySQL 数据库本身就有很大的压力，导致数据库服务器 CPU 占用率很高或 ioutil（IO 利用率）很高，这种情况下所有语句的执行都有可能变慢，不属于今天的探讨范围。 正题首">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/1.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/2.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/3.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/4.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/5.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/6.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/8.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/10.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/11.png">
+<meta property="og:image" content="https://enpsl.github.io/img/in-post/2018-12-01/12.png">
+<meta property="article:published_time" content="2022-12-01T11:30:00.000Z">
+<meta property="article:modified_time" content="2023-01-19T07:31:17.881Z">
+<meta property="article:author" content="enpsl">
+<meta property="article:tag" content="mysql">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://enpsl.github.io/img/in-post/2018-12-01/1.png">
+
+
+<link rel="canonical" href="https://enpsl.github.io/2022/12/01/2022-12-01-mysql-per-analysis/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"https://enpsl.github.io/2022/12/01/2022-12-01-mysql-per-analysis/","path":"2022/12/01/2022-12-01-mysql-per-analysis/","title":"mysql语句查询性能分析"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>mysql语句查询性能分析 | 彭诗亮的博客</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">彭诗亮的博客</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%AD%A3%E9%A2%98"><span class="nav-number">2.</span> <span class="nav-text">正题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%87%A0%E7%A7%8D%E5%9C%BA%E6%99%AF%E7%B1%BB%E5%9E%8B%E5%88%86%E6%9E%90"><span class="nav-number">2.1.</span> <span class="nav-text">几种场景类型分析</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%AC%AC%E4%B8%80%E7%B1%BB%EF%BC%9A%E6%9F%A5%E8%AF%A2%E9%95%BF%E6%97%B6%E9%97%B4%E4%B8%8D%E8%BF%94%E5%9B%9E"><span class="nav-number">2.1.1.</span> <span class="nav-text">第一类：查询长时间不返回</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%AC%AC%E4%BA%8C%E7%B1%BB%EF%BC%9A%E6%9F%A5%E8%AF%A2%E6%85%A2"><span class="nav-number">2.1.2.</span> <span class="nav-text">第二类：查询慢</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%B0%8F%E7%BB%93"><span class="nav-number">2.1.3.</span> <span class="nav-text">小结</span></a></li></ol></li></ol></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">enpsl</p>
+  <div class="site-description" itemprop="description">my blog</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">31</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+          <a href="/tags/">
+        <span class="site-state-item-count">7</span>
+        <span class="site-state-item-name">标签</span></a>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="https://enpsl.github.io/2022/12/01/2022-12-01-mysql-per-analysis/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="enpsl">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="彭诗亮的博客">
+      <meta itemprop="description" content="my blog">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="mysql语句查询性能分析 | 彭诗亮的博客">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          mysql语句查询性能分析
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2022-12-01 19:30:00" itemprop="dateCreated datePublished" datetime="2022-12-01T19:30:00+08:00">2022-12-01</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-01-19 15:31:17" itemprop="dateModified" datetime="2023-01-19T15:31:17+08:00">2023-01-19</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+        <h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>一般情况下，如果谈起查询性能优化，多数人的第一感知都是想到一些复杂的语句，想到查询需要返回大量的数据。<br>但有些情况下，“查一行”，也会执行得特别慢。今天，就来探讨这个问题，看看什么情况下，会出现这个现象。</p>
+<p>当然，如果 MySQL 数据库本身就有很大的压力，导致数据库服务器 CPU 占用率很高或 ioutil（IO 利用率）很高，<br>这种情况下所有语句的执行都有可能变慢，不属于今天的探讨范围。</p>
+<h2 id="正题"><a href="#正题" class="headerlink" title="正题"></a>正题</h2><p>首先，先做一个测试表在插入1万条数据</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">CREATE TABLE `t1` (</span><br><span class="line">  `id` int(11) NOT NULL,</span><br><span class="line">  `c` int(11) DEFAULT NULL,</span><br><span class="line">  PRIMARY KEY (`id`)</span><br><span class="line">) ENGINE=InnoDB;</span><br><span class="line"></span><br><span class="line">delimiter ;;</span><br><span class="line">create procedure idata()</span><br><span class="line">begin</span><br><span class="line">  declare i int;</span><br><span class="line">  set i=1;</span><br><span class="line">  while(i&lt;=10000)do</span><br><span class="line">    insert into t1 values(i,i);</span><br><span class="line">    set i=i+1;</span><br><span class="line">  end while;</span><br><span class="line">end;;</span><br><span class="line">delimiter ;</span><br><span class="line"></span><br><span class="line">call idata();</span><br></pre></td></tr></table></figure>
+
+<h3 id="几种场景类型分析"><a href="#几种场景类型分析" class="headerlink" title="几种场景类型分析"></a>几种场景类型分析</h3><h4 id="第一类：查询长时间不返回"><a href="#第一类：查询长时间不返回" class="headerlink" title="第一类：查询长时间不返回"></a>第一类：查询长时间不返回</h4><p>执行下面的sql</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mysql&gt; select * from t1 where id=1;</span><br></pre></td></tr></table></figure>
+<p>查询长时间不返回</p>
+<p><img src="https://enpsl.github.io/img/in-post/2018-12-01/1.png"></p>
+<p>一般碰到这种情况的话，大概率是表 t1 被锁住了。接下来分析原因的时候，一般都是首先执行一下 show processlist 命令，看看当前语句处于什么状态。</p>
+<p>然后再根据状态去分析产生的原因，以及能否复现</p>
+<p><strong>等MDL锁</strong></p>
+<p>如下图所示，就是使用 show processlist 命令查看 Waiting for table metadata lock 的示意图。<br><img src="https://enpsl.github.io/img/in-post/2018-12-01/2.png"><br>这个状态表示的是，现在<strong>有一个线程正在表 t1 上请求或者持有 MDL 写锁，把 select 语句堵住了。</strong></p>
+<p>不过，在 MySQL 5.7 版本下复现这个场景，也很容易。</p>
+<table><tr><th>SessionA</th><th>SessionB</th></tr><tr><td>lock table t1 write</td><td></td></tr><tr><td></td><td>select * from t1 where id=1;</td></tr></table>
+
+<p>session A 通过 lock table 命令持有表 t1 的 MDL 写锁，而 session B 的查询需要获取 MDL 读锁。所以，session B 进入等待状态。</p>
+<p>这类问题的处理方式，就是找到谁持有 MDL 写锁，然后把它 kill 掉。</p>
+<p>但是，由于在 show processlist 的结果里面，session A 的 Command 列是“Sleep”，导致查找起来很不方便。不过有了 performance_schema 和 sys 系统库以后，就方便多了。（MySQL 启动时需要设置 performance_schema&#x3D;on，相比于设置为 off 会有 10% 左右的性能损失)</p>
+<p>查看是否支持performance_schema</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">select</span> <span class="operator">*</span> <span class="keyword">from</span> information_schema.engines <span class="keyword">where</span> engine <span class="operator">=</span><span class="string">&#x27;performance_schema&#x27;</span>;</span><br></pre></td></tr></table></figure>
+<p><img src="https://enpsl.github.io/img/in-post/2018-12-01/3.png"><br>是否开启performance_schema</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">show</span> variables <span class="keyword">like</span> <span class="string">&#x27;performance_schema&#x27;</span>;</span><br></pre></td></tr></table></figure>
+<p><img src="https://enpsl.github.io/img/in-post/2018-12-01/4.png"></p>
+<p>通过查询 sys.schema_table_lock_waits 这张表，我们就可以直接找出造成阻塞的 process id，把这个连接用 kill 命令断开即可。</p>
+<p><strong>等FLUSH</strong></p>
+<p>另一种场景<br>我在表t1上执行这样一条sql</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mysql&gt; select * from information_schema.processlist where id=1;</span><br></pre></td></tr></table></figure>
+<p>查出来这个线程的状态是 Waiting for table flush</p>
+<p>这个状态表示的是，现在有一个线程正要对表 t1 做 flush 操作。MySQL 里面对表做 flush 操作的用法，一般有以下两个：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">flush tables t1 with read lock;</span><br><span class="line">flush tables with read lock;</span><br></pre></td></tr></table></figure>
+
+<p>这两个 flush 语句，如果指定表 t1 的话，代表的是只关闭表 t1；如果没有指定具体的表名，则表示关闭 MySQL 里所有打开的表。</p>
+<p>但是正常这两个语句执行起来都很快，除非它们也被别的线程堵住了。</p>
+<p>所以，出现 Waiting for table flush 状态的可能情况是：有一个 flush tables 命令被别的语句堵住了，然后它又堵住了我们的 select 语句。</p>
+<p>复现一下这种情况:</p>
+<table><tr><th>SessionA</th><th>SessionB</th><th>SessionC</th></tr><tr><td>select sleep(1) from t1</td><td></td><td></td></tr><tr><td></td><td>flush table t1</td><td></td></tr><tr><td></td><td></td><td>select * from t1 where id=1;</td></tr></table> 
+在 session A 中，我故意每行都调用一次 sleep(1)，这样这个语句默认要执行 1 万秒，在这期间表 t 一直是被 session A“打开”着。然后，session B 的 flush tables t 命令再要去关闭表 t，就需要等 session A 的查询结束。这样，session C 要再次查询的话，就会被 flush 命令堵住了。
+ 
+<p>下面是show processlist 结果<br> <img src="https://enpsl.github.io/img/in-post/2018-12-01/5.png"></p>
+<p> <strong>等行锁</strong></p>
+<p>现在，经过了表级锁的考验，我们的 select 语句终于来到引擎里了。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mysql&gt; select * from t1 where id=1 lock in share mode; </span><br></pre></td></tr></table></figure>
+<p>由于访问 id&#x3D;1 这个记录时要加读锁，如果这时候已经有一个事务在这行记录上持有一个写锁，我们的 select 语句就会被堵住。</p>
+<p>行锁操作复现:</p>
+<table><tr><th>SessionA</th><th>SessionB</th></tr><tr><td>begin;<br>update t1 set c=c+1 where id=1;</td><td></td></tr><tr><td></td><td>select * from t1 where id=1 lock in share mode;</td></tr></table>
+下面是show processlist 结果
+
+<p> <img src="https://enpsl.github.io/img/in-post/2018-12-01/6.png"></p>
+<p>显然，session A 启动了事务，占有写锁，还不提交，是导致 session B 被堵住的原因。</p>
+<p>这个问题并不难分析，但问题是怎么查出是谁占着这个写锁。如果你用的是 MySQL 5.7 版本，可以通过 sys.innodb_lock_waits 表查到。</p>
+<p>查询方法：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mysql&gt; select * from t1 sys.innodb_lock_waits where locked_table=&#x27;`test`.`t1`&#x27;\G</span><br></pre></td></tr></table></figure>
+<p> <img src="https://enpsl.github.io/img/in-post/2018-12-01/8.png"></p>
+<p>可以看到，这个信息很全，9957 号线程是造成堵塞的罪魁祸首。而干掉这个罪魁祸首的方式，就是 KILL QUERY 9957 或 KILL 9957。</p>
+<p>不过，这里不应该显示“KILL QUERY 9957”。这个命令表示停止 9957 号线程当前正在执行的语句，而这个方法其实是没有用的。因为占有行锁的是 update 语句，这个语句已经是之前执行完成了的，现在执行 KILL QUERY，无法让这个事务去掉 id&#x3D;1 上的行锁。</p>
+<p>实际上，KILL 9957 才有效，也就是说直接断开这个连接。这里隐含的一个逻辑就是，连接被断开的时候，会自动回滚这个连接里面正在执行的线程，也就释放了 id&#x3D;1 上的行锁。</p>
+<h4 id="第二类：查询慢"><a href="#第二类：查询慢" class="headerlink" title="第二类：查询慢"></a>第二类：查询慢</h4><p>经过了重重封“锁”，再来看看一些查询慢的例子</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">mysql<span class="operator">&gt;</span> <span class="keyword">select</span> <span class="operator">*</span> <span class="keyword">from</span> t1 <span class="keyword">where</span> c<span class="operator">=</span><span class="number">9000</span> limit <span class="number">1</span>;</span><br></pre></td></tr></table></figure>
+
+<p>由于字段 c 上没有索引，这个语句只能走 id 主键顺序扫描，因此需要扫描 5 千行。</p>
+<p>通过slow_log 看一下</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">set</span> <span class="keyword">global</span> slow_query_log<span class="operator">=</span><span class="keyword">ON</span>;</span><br><span class="line"><span class="keyword">set</span> long_query_time<span class="operator">=</span><span class="number">0</span>;  #我们让所有查询都加入到slow_log中</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">show</span> variables <span class="keyword">like</span> <span class="string">&#x27;%slow%&#x27;</span>;</span><br></pre></td></tr></table></figure>
+<p> <img src="https://enpsl.github.io/img/in-post/2018-12-01/10.png"></p>
+<p> slow_log结果</p>
+<p>  <img src="https://enpsl.github.io/img/in-post/2018-12-01/11.png"></p>
+<p>Rows_examined 显示扫描了 9000 行。你可能会说，不是很慢呀，6 毫秒就返回了，我们线上一般都配置超过 1 秒才算慢查询。但你要记住：<br><strong>坏查询不一定是慢查询</strong>。我们这个例子里面只有 1 万行记录，数据量大起来的话，执行时间就线性涨上去了。</p>
+<p>扫描行数多，所以执行慢，这个很好理解。</p>
+<p>但是接下来，我们再看一个只扫描一行，但是执行很慢的语句。</p>
+<p>看下面的例子</p>
+<table><tr><th>SessionA</th><th>SessionB</th></tr><tr><td>start transaction with consistent snapshot;</td><td></td></tr><tr><td></td><td>update t1 set c=c+1 where id=1;//执行100万次</td></tr><tr><td>select * from t1 where id = 1;</td><td></td></tr><tr><td>select * from t1 where id = 1 lock in share mode;</td><td></td></tr></table>
+先看看执行一次的结果
+
+<p><img src="https://enpsl.github.io/img/in-post/2018-12-01/12.png"></p>
+<p>由此可推出SessionB执行100万次后结果<br>select * from t1 where id &#x3D; 1 lock in share mode;</p>
+<table style="width:15%"><tr><th>id</th><th>c</th></tr><tr><td>1</td><td>1000001</td></tr></table>
+1 row in set (0.00 sec)
+
+<p>此时，session A 先用 start transaction with consistent snapshot 命令启动了一个事务，之后 session B 才开始执行 update 语句。</p>
+<p>session B 更新完 100 万次，生成了 100 万个回滚日志 (undo log)。</p>
+<p>带 lock in share mode 的 SQL 语句，是当前读，因此会直接读到 1000001 这个结果，所以速度很快；而 select * from t where id&#x3D;1 这个语句，是一致性读，因此需要从 1000001 开始，依次执行 undo log，执行了 100 万次以后，才将 1 这个结果返回。</p>
+<h4 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h4><p>今天列举了在一个简单的表上，执行“查一行”，可能会出现的被锁住和执行慢的例子。这其中涉及到了表锁、行锁和一致性读的概念。<br>在实际使用中，碰到的场景会更复杂。但大同小异。</p>
+<blockquote>
+<p>参考</p>
+<ul>
+<li>《极客时间林晓斌Mysql专场》</li>
+</ul>
+</blockquote>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/mysql/" rel="tag"># mysql</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2022/04/12/2022-04-12-elasticsearch-num6/" rel="prev" title="Elasticsearch Search运行机制">
+                  <i class="fa fa-chevron-left"></i> Elasticsearch Search运行机制
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2023/01/15/2023-01-17-sync-map%E5%8E%9F%E7%90%86/" rel="next" title="GO SYNC MAP原理">
+                  GO SYNC MAP原理 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+
+<div class="copyright">
+  &copy; 
+  <span itemprop="copyrightYear">2023</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">enpsl</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>
